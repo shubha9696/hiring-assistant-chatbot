@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 
 export type Role = "user" | "assistant";
 
@@ -64,6 +64,18 @@ const QUESTIONS_DB: Record<string, string[]> = {
     "How does Garbage Collection work in Java?",
     "What are the different types of memory areas allocated by JVM?"
   ],
+  node: [
+    "What is the Event Loop in Node.js?",
+    "Explain the difference between callbacks, promises, and async/await.",
+    "How do you handle errors in Node.js?",
+    "What is middleware in Express.js?"
+  ],
+  typescript: [
+    "What are the benefits of using TypeScript over JavaScript?",
+    "Explain generics in TypeScript.",
+    "What is the difference between `interface` and `type`?",
+    "How does TypeScript's type inference work?"
+  ],
   default: [
     "Can you describe a challenging technical problem you solved recently?",
     "How do you stay updated with the latest technologies?",
@@ -86,6 +98,8 @@ export function useChatLogic() {
   const [isTyping, setIsTyping] = useState(false);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [questionQueue, setQuestionQueue] = useState<string[]>([]);
+  const [sessionId, setSessionId] = useState<number | null>(null);
+  const [responses, setResponses] = useState<Array<{question: string, answer: string}>>([]);
 
   const addMessage = (role: Role, content: string) => {
     setMessages((prev) => [
@@ -99,12 +113,49 @@ export function useChatLogic() {
     ]);
   };
 
+  const createSession = async (data: Partial<CandidateInfo>) => {
+    try {
+      const response = await fetch("/api/interview-sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: data.name || "",
+          email: data.email || "",
+          phone: data.phone,
+          experience: data.experience,
+          position: data.position,
+          location: data.location,
+          techStack: data.techStack || [],
+          responses: [],
+          status: "in_progress",
+        }),
+      });
+      const session = await response.json();
+      setSessionId(session.id);
+      return session.id;
+    } catch (error) {
+      console.error("Failed to create session:", error);
+      return null;
+    }
+  };
+
+  const updateSession = async (id: number, data: any) => {
+    try {
+      await fetch(`/api/interview-sessions/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+    } catch (error) {
+      console.error("Failed to update session:", error);
+    }
+  };
+
   const processInput = async (input: string) => {
     addMessage("user", input);
     setIsTyping(true);
 
-    // Simulate AI delay
-    setTimeout(() => {
+    setTimeout(async () => {
       let response = "";
       let nextStep = step;
 
@@ -135,7 +186,14 @@ export function useChatLogic() {
           nextStep = "LOCATION";
           break;
         case "LOCATION":
-          setCandidateInfo((prev) => ({ ...prev, location: input }));
+          const updatedInfo = { ...candidateInfo, location: input };
+          setCandidateInfo(updatedInfo);
+          
+          const newSessionId = await createSession(updatedInfo);
+          if (newSessionId) {
+            setSessionId(newSessionId);
+          }
+          
           response = "Great. Now, please list your Tech Stack (programming languages, frameworks, tools, etc.) separated by commas.";
           nextStep = "TECH_STACK";
           break;
@@ -143,11 +201,10 @@ export function useChatLogic() {
           const stacks = input.split(",").map((s) => s.trim().toLowerCase());
           setCandidateInfo((prev) => ({ ...prev, techStack: stacks }));
           
-          // Generate questions
           const questions: string[] = [];
           stacks.forEach(stack => {
             if (QUESTIONS_DB[stack]) {
-              questions.push(...QUESTIONS_DB[stack].slice(0, 2)); // Take top 2 questions per known stack
+              questions.push(...QUESTIONS_DB[stack].slice(0, 2));
             }
           });
           
@@ -155,20 +212,32 @@ export function useChatLogic() {
             questions.push(...QUESTIONS_DB.default);
           }
           
-          // Cap at 5 questions
           const finalQuestions = questions.slice(0, 5);
           setQuestionQueue(finalQuestions);
+          
+          if (sessionId) {
+            await updateSession(sessionId, { techStack: stacks });
+          }
           
           response = `Thank you. Based on your skills, I have a few technical questions for you.\n\nFirst Question: ${finalQuestions[0]}`;
           nextStep = "QUESTIONS";
           break;
         case "QUESTIONS":
-          // User answered a question
+          const newResponses = [...responses, { question: questionQueue[currentQuestionIndex], answer: input }];
+          setResponses(newResponses);
+          
+          if (sessionId) {
+            await updateSession(sessionId, { responses: newResponses });
+          }
+          
           if (currentQuestionIndex < questionQueue.length - 1) {
             const nextIdx = currentQuestionIndex + 1;
             setCurrentQuestionIndex(nextIdx);
             response = `Thank you. Next question:\n\n${questionQueue[nextIdx]}`;
           } else {
+            if (sessionId) {
+              await updateSession(sessionId, { status: "completed" });
+            }
             response = "Thank you for answering those questions. That concludes our initial screening. Our recruitment team will review your responses and get back to you shortly. Have a great day!";
             nextStep = "CLOSING";
           }
@@ -192,6 +261,7 @@ export function useChatLogic() {
     processInput,
     isTyping,
     candidateInfo,
-    step
+    step,
+    sessionId
   };
 }

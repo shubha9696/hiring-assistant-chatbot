@@ -5,12 +5,11 @@ import { useChatLogic, ChatMessage } from "@/lib/chat-logic";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import avatarImage from "@assets/generated_images/talentscout_ai_avatar.png";
 import bgImage from "@assets/generated_images/subtle_tech_background.png";
 
 export default function ChatInterface() {
-  const { messages, processInput, isTyping, step } = useChatLogic();
+  const { messages, processInput, isTyping, step, sessionId } = useChatLogic();
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [inputValue, setInputValue] = useState("");
@@ -30,7 +29,6 @@ export default function ChatInterface() {
 
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-background p-4 md:p-8 relative overflow-hidden">
-      {/* Background Image Layer */}
       <div 
         className="absolute inset-0 z-0 opacity-50 pointer-events-none"
         style={{
@@ -41,21 +39,24 @@ export default function ChatInterface() {
       />
 
       <Card className="w-full max-w-4xl h-[85vh] flex flex-col shadow-2xl border-sidebar-border/40 bg-card/95 backdrop-blur-sm z-10 overflow-hidden relative">
-        {/* Header */}
         <div className="p-4 border-b bg-white/50 dark:bg-black/20 flex items-center gap-4 backdrop-blur-md sticky top-0 z-20">
           <div className="relative h-12 w-12 rounded-xl overflow-hidden shadow-md border border-white/20">
-            <img src={avatarImage} alt="TalentScout AI" className="object-cover w-full h-full" />
+            <img src={avatarImage} alt="TalentScout AI" className="object-cover w-full h-full" data-testid="img-avatar" />
           </div>
           <div>
-            <h1 className="font-header text-xl font-bold text-primary tracking-tight">TalentScout AI</h1>
-            <p className="text-xs text-muted-foreground font-medium flex items-center gap-2">
+            <h1 className="font-header text-xl font-bold text-primary tracking-tight" data-testid="text-title">TalentScout AI</h1>
+            <p className="text-xs text-muted-foreground font-medium flex items-center gap-2" data-testid="text-status">
               <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"/> 
               Online • Hiring Assistant
             </p>
           </div>
+          {sessionId && (
+            <div className="ml-auto text-xs text-muted-foreground" data-testid="text-session-id">
+              Session #{sessionId}
+            </div>
+          )}
         </div>
 
-        {/* Chat Area */}
         <div className="flex-1 overflow-y-auto p-4 space-y-6 scroll-smooth" ref={scrollRef}>
           <AnimatePresence initial={false}>
             {messages.map((msg) => (
@@ -69,6 +70,7 @@ export default function ChatInterface() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9 }}
               className="flex items-start gap-3 max-w-[80%]"
+              data-testid="typing-indicator"
             >
               <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0 border border-primary/20">
                 <Bot size={16} className="text-primary" />
@@ -84,7 +86,6 @@ export default function ChatInterface() {
           )}
         </div>
 
-        {/* Input Area */}
         <div className="p-4 bg-white/50 dark:bg-black/20 border-t backdrop-blur-md">
           <form onSubmit={handleSubmit} className="flex gap-2 relative">
             <Input
@@ -95,12 +96,14 @@ export default function ChatInterface() {
               className="pr-12 py-6 text-base shadow-inner bg-background/80 border-primary/10 focus-visible:ring-primary/30"
               disabled={step === "CLOSING" || isTyping}
               autoFocus
+              data-testid="input-message"
             />
             <Button 
               type="submit" 
               size="icon" 
               disabled={!inputValue.trim() || step === "CLOSING" || isTyping}
               className="absolute right-1.5 top-1.5 h-9 w-9 rounded-lg shadow-sm transition-all duration-200"
+              data-testid="button-send"
             >
               {isTyping ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             </Button>
@@ -125,8 +128,8 @@ function MessageBubble({ message }: { message: ChatMessage }) {
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ duration: 0.3, ease: "easeOut" }}
       className={`flex items-end gap-3 ${isUser ? "flex-row-reverse" : "flex-row"}`}
+      data-testid={`message-${message.role}-${message.id}`}
     >
-      {/* Avatar */}
       <div className={`h-8 w-8 rounded-lg flex items-center justify-center flex-shrink-0 shadow-sm border ${
         isUser 
           ? "bg-primary text-primary-foreground border-primary" 
@@ -135,18 +138,17 @@ function MessageBubble({ message }: { message: ChatMessage }) {
         {isUser ? <User size={16} /> : <Bot size={16} />}
       </div>
 
-      {/* Bubble */}
       <div
         className={`max-w-[80%] md:max-w-[70%] px-5 py-3.5 shadow-sm text-sm md:text-base leading-relaxed whitespace-pre-wrap ${
           isUser
             ? "bg-primary text-primary-foreground rounded-2xl rounded-tr-none"
             : "bg-white dark:bg-card text-card-foreground border border-border/50 rounded-2xl rounded-tl-none"
         }`}
+        data-testid={`text-message-content-${message.id}`}
       >
         {message.content}
       </div>
       
-      {/* Timestamp (optional, hidden for minimal look but good for structure) */}
       <span className="text-[10px] text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
         {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
       </span>
